@@ -39,16 +39,12 @@
             width: 100%;
             height: 100vh;
             z-index: -2;
-            /* Fallback gradient if video fails to load */
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
         }
 
         #bg-video {
             width: 100%;
             height: 100%;
             object-fit: cover;
-            /* Ensure video is visible */
-            opacity: 1;
         }
 
         .dark-overlay {
@@ -378,7 +374,7 @@
 <body>
 
     <div id="video-container">
-        <video id="bg-video" preload="auto" playsinline webkit-playsinline muted autoplay>
+        <video id="bg-video" preload="auto" playsinline muted>
             <source src="assets/Gym_Website_Video_Animation_Creation.mp4" type="video/mp4">
         </video>
     </div>
@@ -613,41 +609,20 @@
         const video = document.getElementById("bg-video");
         let videoDuration = 0;
         let isVideoReady = false;
-        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-        // Mobile browsers need special handling to display video frames
-        function initMobileVideo() {
-            // Play briefly then pause to initialize video rendering on mobile
-            const playPromise = video.play();
-            if (playPromise !== undefined) {
-                playPromise.then(function() {
-                    // Video started, now pause and set to frame 0
-                    setTimeout(function() {
-                        video.pause();
-                        video.currentTime = 0.001; // Slight offset to force frame render
-                    }, 50);
-                }).catch(function(error) {
-                    console.log("Mobile video autoplay blocked:", error);
-                    // Still try to set currentTime
-                    video.currentTime = 0.001;
-                });
-            }
-        }
+        // Force video to stay paused - we control it via currentTime only
+        video.pause();
 
-        // Use loadeddata event which fires earlier and works better on mobile
-        video.addEventListener('loadeddata', function() {
-            if (isMobile) {
-                initMobileVideo();
-            }
-            initVideoScrub();
+        // Prevent any auto-play attempts
+        video.addEventListener('play', function() {
+            video.pause();
         });
 
+        // Use canplaythrough for better reliability
+        video.addEventListener('canplaythrough', initVideoScrub);
         video.addEventListener('loadedmetadata', function() {
             // Fallback: also try to init on metadata load
             if (!isVideoReady && video.duration) {
-                if (isMobile) {
-                    initMobileVideo();
-                }
                 initVideoScrub();
             }
         });
@@ -657,22 +632,28 @@
             isVideoReady = true;
             videoDuration = video.duration;
 
+            // Make sure video is paused
+            video.pause();
+
             // Set initial frame
-            video.currentTime = 0.001;
+            video.currentTime = 0;
 
             // Create the scroll-driven animation
             ScrollTrigger.create({
                 trigger: "body",
                 start: "top top",
                 end: "bottom bottom",
-                scrub: isMobile ? 0.5 : 0, // Slight smoothing on mobile for better performance
+                scrub: 0, // Immediate response (0 = no lag)
                 onUpdate: function(self) {
                     // Calculate target time based on scroll progress
                     const targetTime = self.progress * videoDuration;
                     
                     // Only update if the video is ready and time is valid
                     if (video.readyState >= 2 && !isNaN(targetTime) && isFinite(targetTime)) {
-                        video.currentTime = targetTime;
+                        // Use requestAnimationFrame for smoother updates
+                        requestAnimationFrame(function() {
+                            video.currentTime = targetTime;
+                        });
                     }
                 }
             });
@@ -681,12 +662,9 @@
         // Fallback: If video doesn't fire events properly, try manual check
         setTimeout(function() {
             if (!isVideoReady && video.readyState >= 1 && video.duration) {
-                if (isMobile) {
-                    initMobileVideo();
-                }
                 initVideoScrub();
             }
-        }, 1500);
+        }, 1000);
 
         // Re-sync video on visibility change (tab switching)
         document.addEventListener('visibilitychange', function() {
@@ -695,19 +673,6 @@
                 ScrollTrigger.refresh();
             }
         });
-
-        // Touch interaction to unlock video on mobile (some browsers need this)
-        if (isMobile) {
-            document.addEventListener('touchstart', function unlockVideo() {
-                if (video.paused) {
-                    video.play().then(function() {
-                        video.pause();
-                        video.currentTime = 0.001;
-                    }).catch(function() {});
-                }
-                document.removeEventListener('touchstart', unlockVideo);
-            }, { once: true });
-        }
 
         // Standard submission behavior
         document.getElementById("mainForm").onsubmit = function(e) {
